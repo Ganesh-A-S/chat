@@ -194,7 +194,6 @@ with tab4:
     st.write("Ask questions related to the network scan or vulnerability data.")
     st.divider()
 
-    # Chat messages
     if "default_model" not in st.session_state:
         st.session_state["default_model"] = "llama3-8b-8192"
 
@@ -213,24 +212,76 @@ with tab4:
         with st.chat_message("assistant"):
             response_text = st.empty()
 
-            # Custom logic to handle specific queries
-            if "highest vulnerability" in prompt.lower() and st.session_state.vulnerabilities_df is not None:
-                vulnerabilities_df = st.session_state.vulnerabilities_df
-                if not vulnerabilities_df.empty:
-                    highest_vuln = vulnerabilities_df.loc[vulnerabilities_df['severity'].astype(float).idxmax()]
-                    response = (
-                        f"The highest vulnerability in your network is:\n"
-                        f"- **CVE ID**: {highest_vuln['cve_id']}\n"
-                        f"- **Description**: {highest_vuln['description']}\n"
-                        f"- **Severity**: {highest_vuln['severity']}\n"
-                        f"- **Port**: {highest_vuln['port']}\n"
-                        f"- **Exploit Link**: [View Exploit]({highest_vuln['exploit_link']})"
-                    )
+            # Access the vulnerabilities data
+            vulnerabilities_df = st.session_state.get("vulnerabilities_df")
+
+            # Custom logic for specific queries
+            if vulnerabilities_df is not None:
+                prompt_lower = prompt.lower()
+                
+                # Total number of vulnerabilities
+                if "how many vulnerabilities" in prompt_lower:
+                    total_vulnerabilities = len(vulnerabilities_df)
+                    response = f"There are {total_vulnerabilities} vulnerabilities detected in your network."
+
+                # Highest severity vulnerability
+                elif "highest vulnerability" in prompt_lower:
+                    highest_vuln = vulnerabilities_df.loc[vulnerabilities_df['severity'].idxmax()]
+                    response = (f"The highest vulnerability is {highest_vuln['cve_id']} with a severity score of "
+                                f"{highest_vuln['severity']}. It affects port {highest_vuln['port']} and is described as: "
+                                f"{highest_vuln['description']}.")
+
+                # Count of critical vulnerabilities
+                elif "critical vulnerabilities" in prompt_lower:
+                    critical_count = len(vulnerabilities_df[vulnerabilities_df['severity'].astype(float) >= 9])
+                    response = f"There are {critical_count} critical vulnerabilities in your network."
+
+                # Details of a specific CVE
+                elif "cve-" in prompt_lower:
+                    cve_id = prompt_upper.split(" ")[-1]
+                    cve_details = vulnerabilities_df[vulnerabilities_df['cve_id'] == cve_id]
+                    if not cve_details.empty:
+                        vuln = cve_details.iloc[0]
+                        response = (f"Details for {cve_id}: {vuln['description']} with a severity score of "
+                                    f"{vuln['severity']}. It affects port {vuln['port']}.")
+
+                    else:
+                        response = f"No details found for {cve_id}."
+
+                # Vulnerabilities on a specific port
+                elif "port" in prompt_lower:
+                    port_number = ''.join(filter(str.isdigit, prompt))
+                    port_vulns = vulnerabilities_df[vulnerabilities_df['port'].astype(str) == port_number]
+                    if not port_vulns.empty:
+                        response = (f"There are {len(port_vulns)} vulnerabilities on port {port_number}. "
+                                    f"Some include: {', '.join(port_vulns['cve_id'].tolist())}.")
+                    else:
+                        response = f"No vulnerabilities found on port {port_number}."
+
+                # Summary of vulnerabilities
+                elif "summary" in prompt_lower:
+                    summary = vulnerabilities_df.groupby(pd.cut(vulnerabilities_df['severity'].astype(float),
+                                                                bins=[0, 4, 7, 9, 10],
+                                                                labels=["Low", "Medium", "High", "Critical"])).size()
+                    response = (f"Summary of vulnerabilities:\n"
+                                f"Critical: {summary.get('Critical', 0)}\n"
+                                f"High: {summary.get('High', 0)}\n"
+                                f"Medium: {summary.get('Medium', 0)}\n"
+                                f"Low: {summary.get('Low', 0)}")
+
+                # Most affected port
+                elif "most vulnerabilities" in prompt_lower:
+                    most_vulnerable_port = vulnerabilities_df['port'].mode()[0]
+                    port_count = len(vulnerabilities_df[vulnerabilities_df['port'] == most_vulnerable_port])
+                    response = f"Port {most_vulnerable_port} has the most vulnerabilities with {port_count} occurrences."
+
+                # If no specific logic matches, fallback to Groq API
                 else:
-                    response = "No vulnerabilities found in the current data."
+                    response = None
+
+            if response:
                 response_text.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
-
             else:
                 # Call the Groq API for general questions
                 try:
