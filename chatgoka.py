@@ -188,7 +188,7 @@ with tab3:
     else:
         st.info("No vulnerabilities data available. Please fetch vulnerabilities in the 'Vulnerability Analysis' tab first.")
 
-# Tab 4: Chatbot
+# Chatbot Tab
 with tab4:
     st.header("Chatbot")
     st.write("Ask questions related to the network scan or vulnerability data.")
@@ -213,19 +213,39 @@ with tab4:
         with st.chat_message("assistant"):
             response_text = st.empty()
 
-            try:
-                completion = client.chat.completions.create(
-                    model=st.session_state.default_model,
-                    messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-                    stream=True
-                )
+            # Custom logic to handle specific queries
+            if "highest vulnerability" in prompt.lower() and st.session_state.vulnerabilities_df is not None:
+                vulnerabilities_df = st.session_state.vulnerabilities_df
+                if not vulnerabilities_df.empty:
+                    highest_vuln = vulnerabilities_df.loc[vulnerabilities_df['severity'].astype(float).idxmax()]
+                    response = (
+                        f"The highest vulnerability in your network is:\n"
+                        f"- **CVE ID**: {highest_vuln['cve_id']}\n"
+                        f"- **Description**: {highest_vuln['description']}\n"
+                        f"- **Severity**: {highest_vuln['severity']}\n"
+                        f"- **Port**: {highest_vuln['port']}\n"
+                        f"- **Exploit Link**: [View Exploit]({highest_vuln['exploit_link']})"
+                    )
+                else:
+                    response = "No vulnerabilities found in the current data."
+                response_text.markdown(response)
+                st.session_state.messages.append({"role": "assistant", "content": response})
 
-                full_response = ""
-                for chunk in completion:
-                    if chunk.choices[0].delta.content:
-                        full_response += chunk.choices[0].delta.content
-                        response_text.markdown(full_response)
+            else:
+                # Call the Groq API for general questions
+                try:
+                    completion = client.chat.completions.create(
+                        model=st.session_state.default_model,
+                        messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+                        stream=True
+                    )
 
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-            except Exception as e:
-                st.error(f"Error: {e}")
+                    full_response = ""
+                    for chunk in completion:
+                        if chunk.choices[0].delta.content:
+                            full_response += chunk.choices[0].delta.content
+                            response_text.markdown(full_response)
+
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                except Exception as e:
+                    st.error(f"Error: {e}")
