@@ -12,6 +12,7 @@ from email import encoders
 import smtplib
 from groq import Groq
 
+
 # Groq API client
 client = Groq(api_key=st.secrets.get("GROQ_API_KEY"))
 
